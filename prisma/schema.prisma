@@ -36,12 +36,14 @@ model Activity {
 }
 
 model DailyMetric {
-  id     String   @id @default(cuid())
-  userId String
-  date   DateTime
-  ctl    Float
-  atl    Float
-  tsb    Float
+  id      String   @id @default(cuid())
+  userId  String
+  date    DateTime
+  ctl     Float
+  atl     Float
+  tsb     Float
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user    User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, date])
 }

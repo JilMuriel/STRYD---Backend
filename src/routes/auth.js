@@ -2,10 +2,9 @@
 
 import express from 'express';
 import axios from 'axios';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prism.js'
 
 const router = express.Router();
-const prisma = new PrismaClient();
 
 const {
   STRAVA_CLIENT_ID,
@@ -14,9 +13,26 @@ const {
 } = process.env;
 
 // Step 1: Redirect to Strava
-router.get('/strava', (req, res) => {
+router.get('/strava', async (req, res) => {
   const url = `https://www.strava.com/oauth/authorize?client_id=${STRAVA_CLIENT_ID}&response_type=code&redirect_uri=${STRAVA_REDIRECT_URI}&approval_prompt=auto&scope=read,activity:read_all`;
 
+  const userId = req.cookies.userId;
+
+  if (userId) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (user) {
+      console.log("✅ Existing session, redirecting to dashboard");
+      return res.redirect("http://localhost:5173/dashboard");
+    } else {
+      console.log("⚠️ Stale cookie detected, clearing");
+      res.clearCookie("userId");
+    }
+  }
+
+  console.log("➡️ Redirecting to Strava login");
   res.redirect(url);
 });
 
@@ -52,14 +68,20 @@ router.get('/strava/callback', async (req, res) => {
         refreshToken: refresh_token,
       },
     });
-
-    res.json({
-      message: 'Strava login successful',
-      user,
-    });
+    res.cookie("userId", user.id, {
+      httpOnly: true,
+      sameSite: "lax"
+    })
+    res.redirect("http://localhost:5173/dashboard");
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
+});
+
+router.get("/logout", (req, res) => {
+  // Optional: clear cookies/session 
+  res.clearCookie("userId");
+  res.redirect("http://localhost:5173/");
 });
 
 export default router;
