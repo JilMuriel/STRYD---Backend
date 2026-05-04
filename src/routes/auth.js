@@ -25,7 +25,8 @@ router.get('/strava', async (req, res) => {
 
     if (user) {
       console.log("✅ Existing session, redirecting to dashboard");
-      return res.redirect("http://localhost:5173/dashboard");
+      return res.redirect("https://stryd-backend.onrender.com/dashboard");
+      // return res.redirect("http://localhost:5173/dashboard");
     } else {
       console.log("⚠️ Stale cookie detected, clearing");
       res.clearCookie("userId");
@@ -71,7 +72,8 @@ router.get('/strava/callback', async (req, res) => {
     res.cookie("userId", user.id, {
       httpOnly: true,
       secure: true,
-      sameSite: "none"
+      sameSite: "none",
+      path: "/"
     })
     res.redirect("http://localhost:5173/dashboard");
   } catch (error) {
