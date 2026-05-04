@@ -70,7 +70,8 @@ router.get('/strava/callback', async (req, res) => {
     });
     res.cookie("userId", user.id, {
       httpOnly: true,
-      sameSite: "lax"
+      secure: true,
+      sameSite: "none"
     })
     res.redirect("http://localhost:5173/dashboard");
   } catch (error) {
