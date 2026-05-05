@@ -6,7 +6,6 @@ import { calculateMetrics } from "../services/calculateMetrics.js";
 export const getDashboard = async (req, res) => {
     try {
         const user = req.user;
-
         await syncActivities(user);
         await calculateMetrics(user.id);
 

@@ -3,6 +3,7 @@
 import express from 'express';
 import axios from 'axios';
 import { prisma } from '../lib/prism.js'
+import { config } from '../config/index.js';
 
 const router = express.Router();
 
@@ -26,7 +27,8 @@ router.get('/strava', async (req, res) => {
     if (user) {
       console.log("✅ Existing session, redirecting to dashboard");
       // return res.redirect("https://stryd-backend.onrender.com/api/dashboard");
-      return res.redirect("http://localhost:5173/dashboard");
+      // return res.redirect("http://localhost:5173/dashboard");
+      return res.redirect(`${config.clientUrl}/dashboard`);
     } else {
       console.log("⚠️ Stale cookie detected, clearing");
       res.clearCookie("userId");
@@ -39,6 +41,7 @@ router.get('/strava', async (req, res) => {
 
 // Step 2: Callback
 router.get('/strava/callback', async (req, res) => {
+  console.log("CALLBACK HIT");
   const { code } = req.query;
 
   try {
@@ -69,13 +72,23 @@ router.get('/strava/callback', async (req, res) => {
         refreshToken: refresh_token,
       },
     });
+
     res.cookie("userId", user.id, {
       httpOnly: true,
-      secure: true,
-      sameSite: "none",
+      secure: config.cookie.secure,
+      sameSite: config.cookie.sameSite,
       path: "/"
     })
-    res.redirect("http://localhost:5173/dashboard");
+    res.redirect(`${config.clientUrl}/dashboard`);
+    // res.send(`
+    //   <html>
+    //     <body>
+    //       <script>
+    //         window.location.href = "http://localhost:5173/dashboard";
+    //       </script>
+    //     </body>
+    //   </html>
+    // `);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -84,7 +97,9 @@ router.get('/strava/callback', async (req, res) => {
 router.get("/logout", (req, res) => {
   // Optional: clear cookies/session 
   res.clearCookie("userId");
-  res.redirect("http://localhost:5173/");
+  // res.redirect("http://localhost:5173/");
+  res.redirect(`${config.clientUrl}/`);
+  
 });
 
 export default router;
