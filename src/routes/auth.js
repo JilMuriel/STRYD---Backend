@@ -15,36 +15,69 @@ const {
 
 // Step 1: Redirect to Strava
 router.get('/strava', async (req, res) => {
-  const url = `https://www.strava.com/oauth/authorize?client_id=${STRAVA_CLIENT_ID}&response_type=code&redirect_uri=${STRAVA_REDIRECT_URI}&approval_prompt=auto&scope=read,activity:read_all`;
-
-  const userId = req.cookies.userId;
-
-  if (userId) {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-    });
-
-    if (user) {
-      console.log("✅ Existing session, redirecting to dashboard");
-      // return res.redirect("https://stryd-backend.onrender.com/api/dashboard");
-      // return res.redirect("http://localhost:5173/dashboard");
-      return res.redirect(`${config.clientUrl}/dashboard`);
-    } else {
-      console.log("⚠️ Stale cookie detected, clearing");
-      res.clearCookie("userId");
+  try {
+    // Validate environment variables
+    if (!STRAVA_CLIENT_ID || !STRAVA_CLIENT_SECRET || !STRAVA_REDIRECT_URI) {
+      console.error("❌ Missing Strava environment variables");
+      return res.status(500).json({ 
+        error: "Server configuration error. Please contact administrator." 
+      });
     }
-  }
 
-  console.log("➡️ Redirecting to Strava login");
-  res.redirect(url);
+    const url = `https://www.strava.com/oauth/authorize?client_id=${STRAVA_CLIENT_ID}&response_type=code&redirect_uri=${encodeURIComponent(STRAVA_REDIRECT_URI)}&approval_prompt=auto&scope=read,activity:read_all`;
+
+    const userId = req.cookies.userId;
+
+    if (userId) {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+      });
+
+      if (user) {
+        console.log("✅ Existing session, redirecting to dashboard");
+        return res.redirect(`${config.clientUrl}/dashboard`);
+      } else {
+        console.log("⚠️ Stale cookie detected, clearing");
+        res.clearCookie("userId", {
+          httpOnly: true,
+          secure: config.cookie.secure,
+          sameSite: config.cookie.sameSite,
+          path: "/"
+        });
+      }
+    }
+
+    console.log("➡️ Redirecting to Strava login");
+    res.redirect(url);
+  } catch (error) {
+    console.error("❌ Error in /strava route:", error);
+    res.status(500).json({ error: "Authentication initialization failed" });
+  }
 });
 
 // Step 2: Callback
 router.get('/strava/callback', async (req, res) => {
-  console.log("CALLBACK HIT");
-  const { code } = req.query;
+  console.log("🔄 CALLBACK HIT");
+  const { code, error: oauthError } = req.query;
 
   try {
+    // Handle OAuth errors from Strava
+    if (oauthError) {
+      console.error("❌ OAuth error from Strava:", oauthError);
+      return res.redirect(`${config.clientUrl}/?error=access_denied`);
+    }
+
+    if (!code) {
+      console.error("❌ No authorization code received");
+      return res.redirect(`${config.clientUrl}/?error=no_code`);
+    }
+
+    // Validate environment variables
+    if (!STRAVA_CLIENT_ID || !STRAVA_CLIENT_SECRET) {
+      console.error("❌ Missing Strava credentials");
+      return res.status(500).json({ error: "Server configuration error" });
+    }
+
     // Exchange code for token
     const tokenResponse = await axios.post(
       'https://www.strava.com/oauth/token',
@@ -56,7 +89,12 @@ router.get('/strava/callback', async (req, res) => {
       }
     );
 
-    const { access_token, refresh_token, athlete } = tokenResponse.data;
+    const { access_token, refresh_token, athlete, expires_at } = tokenResponse.data;
+
+    if (!access_token || !refresh_token) {
+      console.error("❌ Missing tokens in Strava response");
+      return res.redirect(`${config.clientUrl}/?error=token_missing`);
+    }
 
     // Save user
     const user = await prisma.user.upsert({
@@ -64,42 +102,50 @@ router.get('/strava/callback', async (req, res) => {
       update: {
         accessToken: access_token,
         refreshToken: refresh_token,
+        name: `${athlete.firstname || ''} ${athlete.lastname || ''}`.trim() || 'Strava User',
       },
       create: {
         stravaId: athlete.id.toString(),
-        name: `${athlete.firstname} ${athlete.lastname}`,
+        name: `${athlete.firstname || ''} ${athlete.lastname || ''}`.trim() || 'Strava User',
         accessToken: access_token,
         refreshToken: refresh_token,
       },
     });
 
+    console.log("✅ User authenticated:", user.id);
+
+    // Set cookie with proper configuration for production
     res.cookie("userId", user.id, {
       httpOnly: true,
-      secure: config.cookie.secure,
-      sameSite: config.cookie.sameSite,
-      path: "/"
-    })
+      secure: config.cookie.secure, // true in production (HTTPS)
+      sameSite: config.cookie.sameSite, // 'none' in production for cross-site
+      path: "/",
+      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+    });
+
+    // Redirect to dashboard
     res.redirect(`${config.clientUrl}/dashboard`);
-    // res.send(`
-    //   <html>
-    //     <body>
-    //       <script>
-    //         window.location.href = "http://localhost:5173/dashboard";
-    //       </script>
-    //     </body>
-    //   </html>
-    // `);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error("❌ Callback error:", error.response?.data || error.message);
+    res.redirect(`${config.clientUrl}/?error=auth_failed`);
   }
 });
 
 router.get("/logout", (req, res) => {
-  // Optional: clear cookies/session 
-  res.clearCookie("userId");
-  // res.redirect("http://localhost:5173/");
-  res.redirect(`${config.clientUrl}/`);
-  
+  try {
+    console.log("🚪 Logging out user");
+    // Clear cookie with same options used to set it
+    res.clearCookie("userId", {
+      httpOnly: true,
+      secure: config.cookie.secure,
+      sameSite: config.cookie.sameSite,
+      path: "/"
+    });
+    res.redirect(`${config.clientUrl}/`);
+  } catch (error) {
+    console.error("❌ Logout error:", error);
+    res.status(500).json({ error: "Logout failed" });
+  }
 });
 
 export default router;

@@ -12,10 +12,13 @@ import dashboardRoutes from './routes/dashboard.js'
 const app = express();
 const PORT = Number(process.env.PORT) || 4000;
 
+// CORS configuration - CRITICAL FIX for authentication
 app.use(
   cors({
-    origin: process.env.CLIENT_URL, // your frontend
+    origin: process.env.CLIENT_URL || "http://localhost:5173", // fallback for local dev
     credentials: true, // allow cookies / auth
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
   })
 );
 
