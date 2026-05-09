@@ -2,30 +2,47 @@
 
 import express from 'express';
 import axios from 'axios';
+import crypto from 'crypto';
 import { prisma } from '../lib/prism.js'
 import { config } from '../config/index.js';
 import { getAuthenticatedUser, requireAuth } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
-const {
-  STRAVA_CLIENT_ID,
-  STRAVA_CLIENT_SECRET,
-  STRAVA_REDIRECT_URI,
-} = process.env;
+const getStravaEnv = () => {
+  const { STRAVA_CLIENT_ID, STRAVA_CLIENT_SECRET, STRAVA_REDIRECT_URI } = process.env;
+
+  if (!STRAVA_CLIENT_ID || !STRAVA_CLIENT_SECRET || !STRAVA_REDIRECT_URI) {
+    return null;
+  }
+
+  return { STRAVA_CLIENT_ID, STRAVA_CLIENT_SECRET, STRAVA_REDIRECT_URI };
+};
 
 // Step 1: Redirect to Strava
 router.get('/strava', async (req, res) => {
   try {
-    // Validate environment variables
-    if (!STRAVA_CLIENT_ID || !STRAVA_CLIENT_SECRET || !STRAVA_REDIRECT_URI) {
+    const stravaEnv = getStravaEnv();
+
+    if (!stravaEnv) {
       console.error("❌ Missing Strava environment variables");
       return res.status(500).json({ 
         error: "Server configuration error. Please contact administrator." 
       });
     }
 
-    const url = `https://www.strava.com/oauth/authorize?client_id=${STRAVA_CLIENT_ID}&response_type=code&redirect_uri=${encodeURIComponent(STRAVA_REDIRECT_URI)}&approval_prompt=auto&scope=read,activity:read_all`;
+    const { STRAVA_CLIENT_ID, STRAVA_REDIRECT_URI } = stravaEnv;
+    const state = crypto.randomBytes(16).toString("hex");
+
+    res.cookie(config.oauth.stateCookieName, state, {
+      httpOnly: true,
+      secure: config.cookie.secure,
+      sameSite: "lax",
+      path: "/",
+      maxAge: config.oauth.stateMaxAgeMs,
+    });
+
+    const url = `https://www.strava.com/oauth/authorize?client_id=${STRAVA_CLIENT_ID}&response_type=code&redirect_uri=${encodeURIComponent(STRAVA_REDIRECT_URI)}&approval_prompt=auto&scope=read,activity:read_all&state=${encodeURIComponent(state)}`;
 
     const userId = req.cookies.userId;
 
@@ -56,7 +73,7 @@ router.get('/strava', async (req, res) => {
 // Step 2: Callback
 router.get('/strava/callback', async (req, res) => {
   console.log("🔄 CALLBACK HIT");
-  const { code, error: oauthError } = req.query;
+  const { code, error: oauthError, state } = req.query;
 
   try {
     // Handle OAuth errors from Strava
@@ -70,11 +87,26 @@ router.get('/strava/callback', async (req, res) => {
       return res.redirect(`${config.clientUrl}/?error=no_code`);
     }
 
-    // Validate environment variables
-    if (!STRAVA_CLIENT_ID || !STRAVA_CLIENT_SECRET) {
+    const expectedState = req.cookies[config.oauth.stateCookieName];
+    res.clearCookie(config.oauth.stateCookieName, {
+      httpOnly: true,
+      secure: config.cookie.secure,
+      sameSite: "lax",
+      path: "/",
+    });
+
+    if (!state || !expectedState || state !== expectedState) {
+      console.error("❌ Invalid OAuth state");
+      return res.redirect(`${config.clientUrl}/?error=invalid_state`);
+    }
+
+    const stravaEnv = getStravaEnv();
+    if (!stravaEnv) {
       console.error("❌ Missing Strava credentials");
       return res.status(500).json({ error: "Server configuration error" });
     }
+
+    const { STRAVA_CLIENT_ID, STRAVA_CLIENT_SECRET } = stravaEnv;
 
     // Exchange code for token
     const tokenResponse = await axios.post(

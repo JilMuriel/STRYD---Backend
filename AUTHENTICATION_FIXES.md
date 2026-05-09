@@ -115,6 +115,7 @@ app.use(
 - Explicit `methods` and `allowedHeaders` ensure browser allows all necessary requests
 - Fallback for `CLIENT_URL` prevents crashes during local development
 - `credentials: true` allows cookies to be sent cross-origin
+- Origin allowlist is now normalized/validated and returns a clear `403 cors_origin_not_allowed` error for blocked origins
 
 ### 3. **Error Handling & Validation**
 
@@ -177,6 +178,22 @@ export const config = {
 - Added better error messages
 - Added logging for debugging
 
+### 6. **Additional Hardening (Latest)**
+
+**Files:** `src/config/index.js`, `src/index.js`, `src/routes/auth.js`
+
+**Changes:**
+- Added `trust proxy` in production (important behind Render proxy)
+- Added origin normalization (`URL(...).origin`) for `CLIENT_URL`
+- Added OAuth `state` protection using short-lived state cookie
+- Added runtime Strava env validation helper (`getStravaEnv`) to avoid stale env reads
+- Added `/api/auth/me` endpoint for frontend session re-hydration checks
+
+**Why this fixes it:**
+- Prevents cross-site request forgery in OAuth callback
+- Improves reliability when configured origins include whitespace/trailing slash variations
+- Gives frontend a stable endpoint to confirm authenticated session after redirects/refresh
+
 ---
 
 ## 🚀 Deployment Checklist for Render
@@ -191,7 +208,7 @@ CLIENT_URL=https://stryd-frontend.onrender.com
 DATABASE_URL=<your-supabase-connection-string>
 DIRECT_URL=<your-supabase-direct-connection-string>
 STRAVA_CLIENT_ID=171913
-STRAVA_CLIENT_SECRET=4b2164a5e223410e1f91ab6050ea9cdb6a2d7998
+STRAVA_CLIENT_SECRET=<your-strava-client-secret>
 STRAVA_REDIRECT_URI=https://stryd-backend.onrender.com/api/auth/strava/callback
 ENABLE_STRAVA_SYNC=true
 ENABLE_DEBUG_LOGS=false
@@ -257,6 +274,8 @@ If authentication still fails:
    - Frontend not sending `credentials: 'include'` in fetch/axios requests
    - STRAVA_REDIRECT_URI mismatch with Strava API settings
    - Missing NODE_ENV=production on Render
+   - `CLIENT_URL` origin mismatch (wrong domain/protocol/trailing slash assumptions)
+   - OAuth callback failing with `invalid_state` if login flow was interrupted or stale tabs were used
 
 ---
 

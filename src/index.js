@@ -4,7 +4,6 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import { config } from "./config/index.js";
 import healthRouter from "./routes/health.js";
-import activitiesRouter from "./routes/activities.js";
 import authRoutes from './routes/auth.js';
 import activityRoutes from './routes/activities.js';
 import dashboardRoutes from './routes/dashboard.js'
@@ -23,13 +22,17 @@ app.use(
     origin: (origin, callback) => {
       if (!origin) return callback(null, true);
       if (config.allowedOrigins.includes(origin)) return callback(null, true);
-      return callback(new Error("Not allowed by CORS"));
+      const err = new Error("CORS origin not allowed");
+      err.status = 403;
+      return callback(err);
     },
     credentials: true, // allow cookies / auth
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
   })
 );
+
+console.log("✅ Allowed CORS origins:", config.allowedOrigins);
 
 app.use(express.json());
 
@@ -46,6 +49,13 @@ app.use('/api/activities', activityRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 
 app.use((err, req, res, next) => {
+  if (err.message === "CORS origin not allowed") {
+    return res.status(403).json({
+      error: "cors_origin_not_allowed",
+      message: "Request origin is not in the API allowlist",
+    });
+  }
+
   const status = err.status && Number.isFinite(err.status) ? err.status : 500;
   res.status(status).json({
     error: err.message || "internal_error",
