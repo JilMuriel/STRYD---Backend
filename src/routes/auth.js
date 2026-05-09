@@ -9,6 +9,12 @@ import { getAuthenticatedUser, requireAuth } from '../middleware/authMiddleware.
 
 const router = express.Router();
 
+const clearUserAuthCookie = (res) => {
+  res.clearCookie("userId", {
+    ...config.cookie,
+  });
+};
+
 const getStravaEnv = () => {
   const { STRAVA_CLIENT_ID, STRAVA_CLIENT_SECRET, STRAVA_REDIRECT_URI } = process.env;
 
@@ -160,14 +166,22 @@ router.get('/strava/callback', async (req, res) => {
 router.get("/logout", (req, res) => {
   try {
     console.log("🚪 Logging out user");
-    // Clear cookie with same options used to set it
-    res.clearCookie("userId", {
-      ...config.cookie,
-    });
+    clearUserAuthCookie(res);
     res.redirect(`${config.clientUrl}/`);
   } catch (error) {
     console.error("❌ Logout error:", error);
     res.status(500).json({ error: "Logout failed" });
+  }
+});
+
+router.post("/logout", (req, res) => {
+  try {
+    console.log("🚪 Logging out user via API");
+    clearUserAuthCookie(res);
+    return res.status(200).json({ success: true, message: "Logged out" });
+  } catch (error) {
+    console.error("❌ Logout API error:", error);
+    return res.status(500).json({ success: false, error: "Logout failed" });
   }
 });
 
