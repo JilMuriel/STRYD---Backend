@@ -21,10 +21,7 @@ export const requireAuth = async (req, res, next) => {
             console.log("⚠️ User not found for userId:", userId);
             // Clear invalid cookie with proper options
             res.clearCookie("userId", {
-                httpOnly: true,
-                secure: config.cookie.secure,
-                sameSite: config.cookie.sameSite,
-                path: "/"
+                ...config.cookie,
             });
             return res.status(401).json({ 
                 error: "Invalid session",
@@ -40,4 +37,19 @@ export const requireAuth = async (req, res, next) => {
         console.error("❌ Auth middleware error:", error);
         next(error);
     }
+};
+
+export const getAuthenticatedUser = (req, res) => {
+    if (!req.user) {
+        return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    return res.json({
+        user: {
+            id: req.user.id,
+            name: req.user.name,
+            stravaId: req.user.stravaId,
+            ftp: req.user.ftp,
+        },
+    });
 };

@@ -4,6 +4,7 @@ import express from 'express';
 import axios from 'axios';
 import { prisma } from '../lib/prism.js'
 import { config } from '../config/index.js';
+import { getAuthenticatedUser, requireAuth } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
@@ -39,10 +40,7 @@ router.get('/strava', async (req, res) => {
       } else {
         console.log("⚠️ Stale cookie detected, clearing");
         res.clearCookie("userId", {
-          httpOnly: true,
-          secure: config.cookie.secure,
-          sameSite: config.cookie.sameSite,
-          path: "/"
+          ...config.cookie,
         });
       }
     }
@@ -116,11 +114,7 @@ router.get('/strava/callback', async (req, res) => {
 
     // Set cookie with proper configuration for production
     res.cookie("userId", user.id, {
-      httpOnly: true,
-      secure: config.cookie.secure, // true in production (HTTPS)
-      sameSite: config.cookie.sameSite, // 'none' in production for cross-site
-      path: "/",
-      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+      ...config.cookie,
     });
 
     // Redirect to dashboard
@@ -136,10 +130,7 @@ router.get("/logout", (req, res) => {
     console.log("🚪 Logging out user");
     // Clear cookie with same options used to set it
     res.clearCookie("userId", {
-      httpOnly: true,
-      secure: config.cookie.secure,
-      sameSite: config.cookie.sameSite,
-      path: "/"
+      ...config.cookie,
     });
     res.redirect(`${config.clientUrl}/`);
   } catch (error) {
@@ -147,5 +138,7 @@ router.get("/logout", (req, res) => {
     res.status(500).json({ error: "Logout failed" });
   }
 });
+
+router.get("/me", requireAuth, getAuthenticatedUser);
 
 export default router;

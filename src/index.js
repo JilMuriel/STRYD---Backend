@@ -2,6 +2,7 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
+import { config } from "./config/index.js";
 import healthRouter from "./routes/health.js";
 import activitiesRouter from "./routes/activities.js";
 import authRoutes from './routes/auth.js';
@@ -12,10 +13,18 @@ import dashboardRoutes from './routes/dashboard.js'
 const app = express();
 const PORT = Number(process.env.PORT) || 4000;
 
+if (config.isProd) {
+  app.set("trust proxy", 1);
+}
+
 // CORS configuration - CRITICAL FIX for authentication
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || "http://localhost:5173", // fallback for local dev
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      if (config.allowedOrigins.includes(origin)) return callback(null, true);
+      return callback(new Error("Not allowed by CORS"));
+    },
     credentials: true, // allow cookies / auth
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
