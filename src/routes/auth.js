@@ -50,9 +50,15 @@ router.get('/strava', async (req, res) => {
 
     const url = `https://www.strava.com/oauth/authorize?client_id=${STRAVA_CLIENT_ID}&response_type=code&redirect_uri=${encodeURIComponent(STRAVA_REDIRECT_URI)}&approval_prompt=auto&scope=read,activity:read_all&state=${encodeURIComponent(state)}`;
 
+    const forceReauth = req.query.force === "true";
+
+    if (forceReauth) {
+      clearUserAuthCookie(res);
+    }
+
     const userId = req.cookies.userId;
 
-    if (userId) {
+    if (userId && !forceReauth) {
       const user = await prisma.user.findUnique({
         where: { id: userId },
       });
@@ -62,9 +68,7 @@ router.get('/strava', async (req, res) => {
         return res.redirect(`${config.clientUrl}/dashboard`);
       } else {
         console.log("⚠️ Stale cookie detected, clearing");
-        res.clearCookie("userId", {
-          ...config.cookie,
-        });
+        clearUserAuthCookie(res);
       }
     }
 

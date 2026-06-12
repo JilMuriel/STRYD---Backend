@@ -2,16 +2,13 @@ import express from 'express';
 import { prisma } from '../lib/prism.js'
 import { analyzeRide } from "../services/analysis.js";
 import { syncActivities } from "../services/syncActivities.js";
+import { requireAuth } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-router.get("/sync", async (req, res) => {
+router.get("/sync", requireAuth, async (req, res) => {
   try {
-    const user = await prisma.user.findFirst();
-
-    if (!user) {
-      return res.status(404).json({ error: "User not found" });
-    }
+    const user = req.user;
 
     const result = await syncActivities(user);
 
@@ -25,7 +22,7 @@ router.get("/sync", async (req, res) => {
   }
 });
 
-router.get("/:id", async (req, res) => {
+router.get("/:id", requireAuth, async (req, res) => {
   const { id } = req.params;
 
   const activity = await prisma.activity.findUnique({
@@ -34,6 +31,10 @@ router.get("/:id", async (req, res) => {
 
   if (!activity) {
     return res.status(404).json({ error: "Activity not found" });
+  }
+
+  if (activity.userId !== req.user.id) {
+    return res.status(403).json({ error: "Forbidden" });
   }
   // 👇 GET METRIC FOR THAT DAY
   const metric = await prisma.dailyMetric.findFirst({
@@ -45,7 +46,7 @@ router.get("/:id", async (req, res) => {
       },
     },
   });
-  const insight = analyzeRide(activity, 200); // use user FTP later
+  const insight = analyzeRide(activity, req.user.ftp);
 
   res.json({
     ...activity,
